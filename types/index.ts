@@ -13,15 +13,21 @@ export interface ServiceProvider {
   id: string
   user_id: string
   category: string
+  subcategory?: string
   bio: string
   price_per_hour: number
-  latitude: number
-  longitude: number
+  latitude?: number
+  longitude?: number
   address: string
+  city?: string
+  province?: string
   avg_rating: number
   total_reviews: number
   is_verified: boolean
   is_active: boolean
+  years_experience?: number
+  certifications?: string[]
+  distance_km?: number
   created_at: string
   // joined from users table
   full_name?: string
