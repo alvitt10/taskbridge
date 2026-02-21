@@ -1,13 +1,15 @@
 'use client'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-export default function LoginPage() {
+// Inner component that uses useSearchParams
+function LoginForm() {
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect') || '/dashboard'
 
@@ -15,27 +17,18 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-
     const { data, error } = await supabase.auth.signInWithPassword({
       email: form.email,
       password: form.password,
     })
-
     if (error) {
       setError(error.message)
       setLoading(false)
       return
     }
-
-    // Get role to redirect correctly
     const { data: user } = await supabase
       .from('users').select('role').eq('id', data.user.id).single()
-
-    const destination = user?.role === 'provider' ? '/provider/dashboard' : redirect
-
-    // Use window.location for a full page reload — this ensures the session
-    // cookie is sent with the next request so middleware sees it correctly
-    window.location.href = destination
+    router.push(user?.role === 'provider' ? '/provider/dashboard' : redirect)
   }
 
   return (
@@ -45,37 +38,25 @@ export default function LoginPage() {
           <div style={{ width: 8, height: 8, background: 'var(--accent)', borderRadius: '50%' }} />
           <span style={{ fontFamily: 'Syne', fontSize: 18, fontWeight: 800, color: 'var(--ink)' }}>TaskBridge</span>
         </Link>
-
         <h1 style={{ fontFamily: 'Syne', fontSize: 28, fontWeight: 800, color: 'var(--ink)', marginBottom: 8 }}>Welcome back</h1>
         <p style={{ color: 'var(--muted)', fontSize: 15, marginBottom: 32 }}>Sign in to your account</p>
-
         <form onSubmit={handleLogin}>
           <FormGroup label="Email address">
             <input type="email" required style={inputStyle} placeholder="you@email.com"
               value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
           </FormGroup>
-
           <FormGroup label="Password">
             <input type="password" required style={inputStyle} placeholder="Your password"
               value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
           </FormGroup>
-
           <div style={{ textAlign: 'right', marginBottom: 24 }}>
-            <a href="#" style={{ fontSize: 13, color: 'var(--accent)' }}>Forgot password?</a>
+            <Link href="/auth/reset" style={{ fontSize: 13, color: 'var(--accent)' }}>Forgot password?</Link>
           </div>
-
-          {error && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 16px', fontSize: 14, color: '#dc2626', marginBottom: 16 }}>
-              {error}
-            </div>
-          )}
-
-          <button type="submit" disabled={loading}
-            style={{ width: '100%', padding: 16, background: 'var(--ink)', color: 'white', border: 'none', borderRadius: 999, fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}>
+          {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 16px', fontSize: 14, color: '#dc2626', marginBottom: 16 }}>{error}</div>}
+          <button type="submit" disabled={loading} style={{ width: '100%', padding: 16, background: 'var(--ink)', color: 'white', border: 'none', borderRadius: 999, fontSize: 15, fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}>
             {loading ? 'Signing in...' : 'Sign in →'}
           </button>
         </form>
-
         <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--muted)', marginTop: 24 }}>
           Don't have an account? <Link href="/auth/signup" style={{ color: 'var(--accent)', fontWeight: 600 }}>Sign up free</Link>
         </p>
@@ -98,4 +79,13 @@ const inputStyle: React.CSSProperties = {
   background: 'var(--paper)', border: '1.5px solid var(--border)',
   borderRadius: 10, fontFamily: 'Instrument Sans, sans-serif',
   fontSize: 15, color: 'var(--text)', outline: 'none',
+}
+
+// Page wraps the form in Suspense — this is the required fix
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading...</div>}>
+      <LoginForm />
+    </Suspense>
+  )
 }

@@ -31,15 +31,14 @@ export default function ChatInterface() {
         body: JSON.stringify({ messages: newMessages }),
       })
       const data = await res.json()
-      const reply = (data.content || data.message || '') as string
-      const displayReply = reply.replace(/RECOMMEND_CATEGORY:.*$/i, '').trim()
-      setMessages(prev => [...prev, { role: 'assistant', content: displayReply }])
+      const reply = data.message as string
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }])
 
-      // ✅ FIXED regex — single backslash \s not double \\s
+      // If AI recommends a category, redirect to search
       const match = reply.match(/RECOMMEND_CATEGORY:\s*(.+)/i)
       if (match) {
         const category = match[1].trim()
-        setTimeout(() => router.push(`/search?category=${encodeURIComponent(category)}`), 2000)
+        setTimeout(() => router.push(`/search?category=${encodeURIComponent(category)}`), 1500)
       }
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I ran into an issue. Please try again!" }])
@@ -52,6 +51,7 @@ export default function ChatInterface() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 68px)' }}>
+      {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 800, width: '100%', margin: '0 auto' }}>
         {messages.map((msg, i) => (
           <div key={i} style={{ display: 'flex', gap: 12, alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '80%', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row' }}>
@@ -66,7 +66,7 @@ export default function ChatInterface() {
               borderTopRightRadius: msg.role === 'user' ? 4 : 16,
               borderTopLeftRadius: msg.role === 'assistant' ? 4 : 16,
             }}>
-              {msg.content}
+              {msg.content.replace(/RECOMMEND_CATEGORY:.*$/i, '').trim()}
             </div>
           </div>
         ))}
@@ -84,6 +84,7 @@ export default function ChatInterface() {
           </div>
         )}
 
+        {/* Quick replies — only show after first AI message */}
         {messages.length === 1 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 48 }}>
             {QUICK_REPLIES.map(q => (
@@ -94,9 +95,11 @@ export default function ChatInterface() {
             ))}
           </div>
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Input */}
       <div style={{ padding: '20px 40px', borderTop: '1px solid var(--border)', background: 'var(--paper)', maxWidth: 800, width: '100%', margin: '0 auto', alignSelf: 'center' }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
           <textarea
@@ -117,7 +120,7 @@ export default function ChatInterface() {
             ↑
           </button>
         </div>
-        <p style={{ fontSize: 12, color: 'var(--muted2)', marginTop: 8, textAlign: 'center' }}>Powered by Llama · Your conversation is private</p>
+        <p style={{ fontSize: 12, color: 'var(--muted2)', marginTop: 8, textAlign: 'center' }}>Powered by GPT-4o · Your conversation is private</p>
       </div>
 
       <style>{`@keyframes bounce { 0%, 60%, 100% { transform: translateY(0) } 30% { transform: translateY(-8px) } }`}</style>

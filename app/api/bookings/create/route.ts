@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, createAdminClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-server'
 import { stripe } from '@/lib/stripe'
 
 export async function POST(req: NextRequest) {
-  const supabaseUser = createServerClient()
-  const { data: { session } } = await supabaseUser.auth.getSession()
+  // Read Bearer token from Authorization header — works with both
+  // cookie-based AND localStorage-based Supabase sessions
+  const authHeader = req.headers.get('authorization')
+  const token = authHeader?.replace('Bearer ', '')
 
-  if (!session) {
+  if (!token) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  }
+
+  const supabase = createAdminClient()
+
+  // Verify the token and get the user
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Invalid session. Please log in again.' }, { status: 401 })
   }
 
   const body = await req.json()
@@ -16,8 +27,6 @@ export async function POST(req: NextRequest) {
   if (!providerId || !date || !timeSlot || !address) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
-
-  const supabase = createAdminClient()
 
   // Check for double booking
   const { data: conflicts } = await supabase
@@ -29,10 +38,9 @@ export async function POST(req: NextRequest) {
     .in('status', ['confirmed', 'pending_payment', 'in_progress'])
 
   if (conflicts && conflicts.length > 0) {
-    return NextResponse.json({ error: 'This time slot is no longer available. Please choose another.' }, { status: 409 })
+    return NextResponse.json({ error: 'This time slot is no longer available.' }, { status: 409 })
   }
 
-  // Get provider details for Stripe metadata
   const { data: provider } = await supabase
     .from('service_providers')
     .select('*, users!inner(full_name, email)')
@@ -45,24 +53,17 @@ export async function POST(req: NextRequest) {
 
   const platformFee = Math.round(totalCents * 0.05)
 
-  // Create Stripe Payment Intent
   const paymentIntent = await stripe.paymentIntents.create({
     amount: totalCents,
     currency: 'cad',
-    metadata: {
-      customerId: session.user.id,
-      providerId,
-      date,
-      timeSlot,
-    },
+    metadata: { customerId: user.id, providerId, date, timeSlot },
     description: `TaskBridge: ${serviceType} with ${(provider as any).users?.full_name}`,
   })
 
-  // Create booking record in 'pending_payment' state
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .insert({
-      customer_id: session.user.id,
+      customer_id: user.id,
       provider_id: providerId,
       service_type: serviceType,
       date,
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (bookingError) {
+    console.error('Booking insert error:', bookingError)
     return NextResponse.json({ error: 'Failed to create booking' }, { status: 500 })
   }
 

@@ -50,12 +50,14 @@ export default function BookingModal({ provider, onClose }: Props) {
     setLoading(true)
     setError('')
     try {
+      // Get the current session token and send it in the header
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         setError('You must be logged in to book. Please sign in and try again.')
         setLoading(false)
         return
       }
+
       const res = await fetch('/api/bookings/create', {
         method: 'POST',
         headers: {
@@ -80,6 +82,7 @@ export default function BookingModal({ provider, onClose }: Props) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,13,13,.7)', backdropFilter: 'blur(12px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: 'white', borderRadius: 24, padding: 48, maxWidth: 520, width: '100%', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
+
         <button onClick={onClose} style={{ position: 'absolute', top: 20, right: 20, width: 36, height: 36, background: 'var(--paper)', border: 'none', borderRadius: '50%', cursor: 'pointer', fontSize: 16 }}>✕</button>
 
         {step === 'success' ? (
@@ -147,6 +150,7 @@ export default function BookingModal({ provider, onClose }: Props) {
                     value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
                 </FormGroup>
 
+                {/* Price Summary */}
                 <div style={{ background: 'var(--paper)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
                   <PriceLine label={`Service (${form.hours}hr × $${provider.price_per_hour})`} value={`$${(totalCents / 100).toFixed(2)}`} />
                   <PriceLine label="Platform fee (5%)" value={`$${(feeCents / 100).toFixed(2)}`} />
@@ -204,11 +208,6 @@ function PaymentForm({ clientSecret, bookingId, amount, onSuccess, onBack }: {
       setError(error.message || 'Payment failed')
       setLoading(false)
     } else {
-      // ✅ FIX: Update booking status to confirmed directly after payment succeeds
-      await supabase
-        .from('bookings')
-        .update({ status: 'confirmed' })
-        .eq('id', bookingId)
       onSuccess()
     }
   }

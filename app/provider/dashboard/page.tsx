@@ -1,56 +1,79 @@
-import { createServerClient } from '@/lib/supabase-server'
-import { redirect } from 'next/navigation'
+'use client'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Nav from '@/components/Nav'
+import { supabase } from '@/lib/supabase'
 
-export default async function ProviderDashboard() {
-  const supabase = createServerClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) redirect('/auth/login?redirect=/provider/dashboard')
+export default function ProviderDashboard() {
+  const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
+  const [bookings, setBookings] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
 
-  const { data: user } = await supabase.from('users').select('*').eq('id', session.user.id).single()
-  if (user?.role !== 'provider') redirect('/dashboard')
+  useEffect(() => {
+    async function load() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/auth/login?redirect=/provider/dashboard'); return }
 
-  const { data: providerProfile } = await supabase
-    .from('service_providers').select('*').eq('user_id', session.user.id).single()
+      const { data: userData } = await supabase
+        .from('users').select('*').eq('id', session.user.id).single()
+      if (userData?.role !== 'provider') { router.push('/dashboard'); return }
+      setUser(userData)
 
-  let bookings: any[] = []
-  if (providerProfile) {
-    const { data } = await supabase
-      .from('bookings')
-      .select('*, users!customer_id(full_name, email)')
-      .eq('provider_id', providerProfile.id)
-      .order('date', { ascending: true })
-    bookings = data || []
-  }
+      const { data: providerProfile } = await supabase
+        .from('service_providers').select('*').eq('user_id', session.user.id).single()
+      setProfile(providerProfile)
 
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      if (providerProfile) {
+        const { data: bookingData } = await supabase
+          .from('bookings')
+          .select('*, users!customer_id(full_name, email)')
+          .eq('provider_id', providerProfile.id)
+          .order('date', { ascending: true })
+        setBookings(bookingData || [])
+      }
+      setLoading(false)
+    }
+    load()
+  }, [])
 
-  const monthBookings = bookings.filter(b => b.created_at >= startOfMonth)
-  const totalEarnings = bookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.total_amount, 0)
-  const monthEarnings = monthBookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.total_amount, 0)
-  const upcoming = bookings.filter(b => ['confirmed', 'pending_payment'].includes(b.status) && b.date >= now.toISOString().split('T')[0])
+  if (loading) return (
+    <>
+      <Nav />
+      <div style={{ paddingTop: 68, minHeight: '100vh', background: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', color: 'var(--muted)' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
+          <p>Loading your dashboard...</p>
+        </div>
+      </div>
+    </>
+  )
 
-  // If no provider profile yet, show onboarding
-  if (!providerProfile) {
-    return (
-      <>
-        <Nav />
-        <main style={{ paddingTop: 68, minHeight: '100vh', background: 'var(--paper)' }}>
-          <div style={{ maxWidth: 600, margin: '80px auto', padding: '0 48px' }}>
-            <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 20, padding: 48, textAlign: 'center' }}>
-              <div style={{ fontSize: 56, marginBottom: 20 }}>🔧</div>
-              <h2 style={{ fontFamily: 'Syne', fontSize: 28, fontWeight: 800, color: 'var(--ink)', marginBottom: 12 }}>Complete your profile</h2>
-              <p style={{ color: 'var(--muted)', fontSize: 15, marginBottom: 28 }}>Set up your provider profile to start receiving booking requests.</p>
-              <a href="/provider/onboard" style={{ display: 'inline-block', padding: '14px 32px', background: 'var(--accent)', color: 'white', borderRadius: 999, fontSize: 15, fontWeight: 600, textDecoration: 'none' }}>
-                Set up my profile →
-              </a>
-            </div>
+  // No provider profile yet — show onboarding prompt
+  if (!profile) return (
+    <>
+      <Nav />
+      <main style={{ paddingTop: 68, minHeight: '100vh', background: 'var(--paper)' }}>
+        <div style={{ maxWidth: 600, margin: '80px auto', padding: '0 48px' }}>
+          <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 20, padding: 48, textAlign: 'center' }}>
+            <div style={{ fontSize: 56, marginBottom: 20 }}>🔧</div>
+            <h2 style={{ fontFamily: 'Syne', fontSize: 28, fontWeight: 800, color: 'var(--ink)', marginBottom: 12 }}>Complete your profile</h2>
+            <p style={{ color: 'var(--muted)', fontSize: 15, marginBottom: 28 }}>Set up your provider profile to start receiving booking requests.</p>
+            <a href="/provider/onboard" style={{ display: 'inline-block', padding: '14px 32px', background: 'var(--accent)', color: 'white', borderRadius: 999, fontSize: 15, fontWeight: 600, textDecoration: 'none' }}>
+              Set up my profile →
+            </a>
           </div>
-        </main>
-      </>
-    )
-  }
+        </div>
+      </main>
+    </>
+  )
+
+  const now = new Date().toISOString().split('T')[0]
+  const upcoming = bookings.filter(b => ['confirmed', 'pending_payment'].includes(b.status) && b.date >= now)
+  const totalEarnings = bookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.total_amount, 0)
+  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+  const monthEarnings = bookings.filter(b => b.status === 'completed' && b.created_at >= startOfMonth).reduce((s, b) => s + b.total_amount, 0)
 
   return (
     <>
@@ -66,9 +89,9 @@ export default async function ProviderDashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
             {[
               { label: 'Monthly Earnings', val: `$${(monthEarnings / 100).toFixed(0)}`, sub: 'This month' },
-              { label: 'Total Bookings', val: bookings.length, sub: 'All time' },
-              { label: 'Avg. Rating', val: `${providerProfile.avg_rating}★`, sub: `${providerProfile.total_reviews} reviews` },
-              { label: 'Upcoming Jobs', val: upcoming.length, sub: 'Confirmed' },
+              { label: 'Total Bookings',   val: bookings.length,                         sub: 'All time' },
+              { label: 'Avg. Rating',      val: `${profile.avg_rating || 0}★`,           sub: `${profile.total_reviews || 0} reviews` },
+              { label: 'Upcoming Jobs',    val: upcoming.length,                          sub: 'Confirmed' },
             ].map(k => (
               <div key={k.label} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 8 }}>{k.label}</div>
@@ -87,7 +110,7 @@ export default async function ProviderDashboard() {
                   <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
                   <p>No upcoming bookings yet. Your profile is live!</p>
                 </div>
-              ) : upcoming.map((b: any) => {
+              ) : upcoming.map(b => {
                 const customer = b.users
                 return (
                   <div key={b.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '16px 0', borderBottom: '1px solid var(--border)' }}>
@@ -110,15 +133,15 @@ export default async function ProviderDashboard() {
               })}
             </div>
 
-            {/* Sidebar stats */}
+            {/* Sidebar */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
                 <h3 style={{ fontFamily: 'Syne', fontSize: 16, fontWeight: 700, color: 'var(--ink)', marginBottom: 16 }}>Profile Status</h3>
                 {[
-                  { label: 'Profile visible', val: providerProfile.is_active ? 'Active' : 'Hidden', ok: providerProfile.is_active },
-                  { label: 'Verified status', val: providerProfile.is_verified ? 'Verified ✓' : 'Pending', ok: providerProfile.is_verified },
-                  { label: 'Total reviews', val: String(providerProfile.total_reviews), ok: true },
-                  { label: 'Avg. rating', val: `${providerProfile.avg_rating}/5.0`, ok: providerProfile.avg_rating >= 4 },
+                  { label: 'Profile visible', val: profile.is_active ? 'Active' : 'Hidden', ok: profile.is_active },
+                  { label: 'Verified status', val: profile.is_verified ? 'Verified ✓' : 'Pending', ok: profile.is_verified },
+                  { label: 'Total reviews',   val: String(profile.total_reviews || 0), ok: true },
+                  { label: 'Avg. rating',     val: `${profile.avg_rating || 0}/5.0`, ok: (profile.avg_rating || 0) >= 4 },
                 ].map(s => (
                   <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
                     <span style={{ color: 'var(--muted)' }}>{s.label}</span>
@@ -126,14 +149,10 @@ export default async function ProviderDashboard() {
                   </div>
                 ))}
               </div>
-
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
-                <h3 style={{ fontFamily: 'Syne', fontSize: 16, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>Earnings Summary</h3>
-                <div style={{ fontFamily: 'Syne', fontSize: 32, fontWeight: 800, color: 'var(--ink)', marginBottom: 4 }}>${(totalEarnings / 100).toFixed(0)}</div>
-                <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>Total earnings all time</div>
-                <a href="/provider/payouts" style={{ display: 'block', textAlign: 'center', padding: '10px', background: 'var(--paper)', border: '1px solid var(--border)', borderRadius: 999, fontSize: 13, color: 'var(--muted)', textDecoration: 'none' }}>
-                  View payout history
-                </a>
+                <h3 style={{ fontFamily: 'Syne', fontSize: 16, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>Total Earnings</h3>
+                <div style={{ fontFamily: 'Syne', fontSize: 32, fontWeight: 800, color: 'var(--ink)' }}>${(totalEarnings / 100).toFixed(0)}</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>All time</div>
               </div>
             </div>
           </div>

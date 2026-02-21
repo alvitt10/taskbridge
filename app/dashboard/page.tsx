@@ -1,32 +1,61 @@
-import { createServerClient } from '@/lib/supabase-server'
-import { redirect } from 'next/navigation'
+'use client'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Nav from '@/components/Nav'
+import { supabase } from '@/lib/supabase'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   pending_payment: { bg: '#fef3c7', color: '#92400e' },
-  confirmed: { bg: '#d1fae5', color: '#065f46' },
-  in_progress: { bg: '#dbeafe', color: '#1e40af' },
-  completed: { bg: '#f3f4f6', color: '#374151' },
-  cancelled: { bg: '#fee2e2', color: '#991b1b' },
+  confirmed:       { bg: '#d1fae5', color: '#065f46' },
+  in_progress:     { bg: '#dbeafe', color: '#1e40af' },
+  completed:       { bg: '#f3f4f6', color: '#374151' },
+  cancelled:       { bg: '#fee2e2', color: '#991b1b' },
 }
 
-export default async function CustomerDashboard() {
-  const supabase = createServerClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) redirect('/auth/login?redirect=/dashboard')
+export default function CustomerDashboard() {
+  const [user, setUser] = useState<any>(null)
+  const [bookings, setBookings] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
 
-  const { data: user } = await supabase.from('users').select('*').eq('id', session.user.id).single()
-  if (user?.role === 'provider') redirect('/provider/dashboard')
+  useEffect(() => {
+    async function load() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/auth/login?redirect=/dashboard'); return }
 
-  const { data: bookings } = await supabase
-    .from('bookings')
-    .select('*, service_providers!inner(*, users!inner(full_name))')
-    .eq('customer_id', session.user.id)
-    .order('created_at', { ascending: false })
+      const { data: userData } = await supabase
+        .from('users').select('*').eq('id', session.user.id).single()
 
-  const upcoming = (bookings || []).filter((b: any) => ['confirmed', 'pending_payment', 'in_progress'].includes(b.status))
-  const past = (bookings || []).filter((b: any) => ['completed', 'cancelled'].includes(b.status))
-  const totalSpent = (bookings || []).filter((b: any) => b.status === 'completed').reduce((s: number, b: any) => s + b.total_amount, 0)
+      if (userData?.role === 'provider') { router.push('/provider/dashboard'); return }
+      setUser(userData)
+
+      const { data: bookingData } = await supabase
+        .from('bookings')
+        .select('*, service_providers!inner(*, users!inner(full_name))')
+        .eq('customer_id', session.user.id)
+        .order('created_at', { ascending: false })
+
+      setBookings(bookingData || [])
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  if (loading) return (
+    <>
+      <Nav />
+      <div style={{ paddingTop: 68, minHeight: '100vh', background: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', color: 'var(--muted)' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
+          <p>Loading your dashboard...</p>
+        </div>
+      </div>
+    </>
+  )
+
+  const upcoming = bookings.filter(b => ['confirmed', 'pending_payment', 'in_progress'].includes(b.status))
+  const past = bookings.filter(b => ['completed', 'cancelled'].includes(b.status))
+  const totalSpent = bookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.total_amount, 0)
 
   return (
     <>
@@ -34,17 +63,19 @@ export default async function CustomerDashboard() {
       <main style={{ paddingTop: 68, background: 'var(--paper)', minHeight: '100vh' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 48px' }}>
           <div style={{ marginBottom: 32 }}>
-            <h1 style={{ fontFamily: 'Syne', fontSize: 32, fontWeight: 800, color: 'var(--ink)' }}>Welcome back, {user?.full_name?.split(' ')[0]}!</h1>
+            <h1 style={{ fontFamily: 'Syne', fontSize: 32, fontWeight: 800, color: 'var(--ink)' }}>
+              Welcome back, {user?.full_name?.split(' ')[0]}!
+            </h1>
             <p style={{ color: 'var(--muted)', marginTop: 4 }}>Here's an overview of your bookings</p>
           </div>
 
           {/* KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
             {[
-              { label: 'Total Bookings', val: bookings?.length || 0 },
-              { label: 'Upcoming', val: upcoming.length },
-              { label: 'Completed', val: past.filter((b: any) => b.status === 'completed').length },
-              { label: 'Total Spent', val: `$${(totalSpent / 100).toFixed(0)}` },
+              { label: 'Total Bookings', val: bookings.length },
+              { label: 'Upcoming',       val: upcoming.length },
+              { label: 'Completed',      val: past.filter(b => b.status === 'completed').length },
+              { label: 'Total Spent',    val: `$${(totalSpent / 100).toFixed(0)}` },
             ].map(k => (
               <div key={k.label} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 8 }}>{k.label}</div>
@@ -53,7 +84,7 @@ export default async function CustomerDashboard() {
             ))}
           </div>
 
-          {/* Upcoming Bookings */}
+          {/* Upcoming */}
           <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 16, padding: 24, marginBottom: 24 }}>
             <h2 style={{ fontFamily: 'Syne', fontSize: 20, fontWeight: 700, color: 'var(--ink)', marginBottom: 20 }}>Upcoming Bookings</h2>
             {upcoming.length === 0 ? (
@@ -61,16 +92,13 @@ export default async function CustomerDashboard() {
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
                 <p>No upcoming bookings. <a href="/search" style={{ color: 'var(--accent)' }}>Find a provider →</a></p>
               </div>
-            ) : upcoming.map((b: any) => (
-              <BookingRow key={b.id} booking={b} />
-            ))}
+            ) : upcoming.map(b => <BookingRow key={b.id} booking={b} />)}
           </div>
 
-          {/* Past Bookings */}
           {past.length > 0 && (
             <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
               <h2 style={{ fontFamily: 'Syne', fontSize: 20, fontWeight: 700, color: 'var(--ink)', marginBottom: 20 }}>Past Bookings</h2>
-              {past.map((b: any) => <BookingRow key={b.id} booking={b} />)}
+              {past.map(b => <BookingRow key={b.id} booking={b} />)}
             </div>
           )}
         </div>
@@ -80,11 +108,8 @@ export default async function CustomerDashboard() {
 }
 
 function BookingRow({ booking }: { booking: any }) {
-  const provider = booking.service_providers
-  const providerName = provider?.users?.full_name || 'Provider'
-  const status = booking.status as string
-  const style = STATUS_STYLES[status] || STATUS_STYLES.confirmed
-
+  const providerName = booking.service_providers?.users?.full_name || 'Provider'
+  const style = STATUS_STYLES[booking.status] || STATUS_STYLES.confirmed
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 0', borderBottom: '1px solid var(--border)' }}>
       <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Syne', fontSize: 18, fontWeight: 700, color: 'var(--accent)', flexShrink: 0 }}>
@@ -98,7 +123,7 @@ function BookingRow({ booking }: { booking: any }) {
         ${(booking.total_amount / 100).toFixed(0)}
       </div>
       <span style={{ padding: '4px 12px', borderRadius: 999, fontSize: 12, fontWeight: 600, background: style.bg, color: style.color }}>
-        {status.replace('_', ' ')}
+        {booking.status.replace('_', ' ')}
       </span>
     </div>
   )
