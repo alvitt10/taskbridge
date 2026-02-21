@@ -1,15 +1,14 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+
+export const dynamic = 'force-dynamic'
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const searchParams = useSearchParams()
-  const redirect = searchParams.get('redirect') || '/dashboard'
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -27,14 +26,14 @@ export default function LoginPage() {
       return
     }
 
-    // Get role to redirect correctly
     const { data: user } = await supabase
       .from('users').select('role').eq('id', data.user.id).single()
 
+    // Read redirect param without useSearchParams
+    const params = new URLSearchParams(window.location.search)
+    const redirect = params.get('redirect') || '/dashboard'
     const destination = user?.role === 'provider' ? '/provider/dashboard' : redirect
 
-    // Use window.location for a full page reload — this ensures the session
-    // cookie is sent with the next request so middleware sees it correctly
     window.location.href = destination
   }
 

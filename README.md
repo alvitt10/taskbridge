@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # TaskBridge — Full Setup Guide
 
 > AI-Powered Local Services Platform  
@@ -160,3 +161,6 @@ Use Stripe test card: **4242 4242 4242 4242**
 | OpenAI | AI chatbot (gpt-4o-mini) | Pay per use (~$2/mo) |
 | Stripe | Payments + escrow | 2.9% + 30¢ per transaction |
 | Google Maps | Location + geocoding | $200/mo free credit |
+=======
+# taskbridge
+>>>>>>> 7a43c73e67dd136a1ee68fa9a7ab12eb5e6ee974
